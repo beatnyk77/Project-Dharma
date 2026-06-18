@@ -45,7 +45,7 @@ cd Project-Dharma
 open index.html
 ```
 
-Or simply visit the hosted version, when available, and play.
+Or play directly at **[beatnyk77.github.io/Project-Dharma](https://beatnyk77.github.io/Project-Dharma/)**.
 
 ---
 

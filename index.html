@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mythic Path — Snakes & Ladders</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            parchment: '#F4E8D0',
+            ink: '#3D2B1F',
+            saffron: '#C45C26',
+            vermillion: '#8B3A3A',
+            forest: '#2D5A3D',
+            gold: '#B8860B',
+          },
+          fontFamily: {
+            display: ['Cinzel', 'serif'],
+            body: ['"Crimson Pro"', 'serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    :root { color-scheme: light; }
+    body {
+      background: radial-gradient(ellipse at center, #F8F0DC 0%, #E8D5B0 100%);
+      min-height: 100dvh;
+    }
+    .scroll-texture {
+      background-image:
+        linear-gradient(135deg, rgba(61,43,31,0.03) 25%, transparent 25%),
+        linear-gradient(225deg, rgba(61,43,31,0.03) 25%, transparent 25%),
+        linear-gradient(45deg, rgba(61,43,31,0.02) 25%, transparent 25%);
+      background-size: 12px 12px;
+    }
+    .cell { transition: background-color 0.2s ease; }
+    .cell.active { box-shadow: inset 0 0 0 3px #B8860B; }
+    .cell.ladder-head { background: rgba(45,90,61,0.15); }
+    .cell.snake-head { background: rgba(139,58,58,0.15); }
+    .token {
+      width: 60%; height: 60%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #E8C547, #B8860B);
+      border: 2px solid #3D2B1F;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      transition: transform 0.08s ease;
+    }
+    .die-face {
+      width: 4.5rem; height: 4.5rem;
+      display: grid; place-items: center;
+      font-family: Cinzel, serif; font-size: 2rem; font-weight: 700;
+      background: #F4E8D0; border: 3px solid #3D2B1F;
+      border-radius: 0.75rem;
+      box-shadow: 3px 3px 0 #3D2B1F;
+    }
+    .die-face.rolling { animation: dieShake 0.3s ease; }
+    @keyframes dieShake {
+      0%, 100% { transform: rotate(0deg); }
+      25% { transform: rotate(-8deg) scale(1.05); }
+      75% { transform: rotate(8deg) scale(1.05); }
+    }
+    .karma-fill { transition: height 0.4s ease; }
+    .modal-enter { animation: unfurl 0.35s ease; }
+    @keyframes unfurl {
+      from { opacity: 0; transform: scaleY(0.85) translateY(-8px); }
+      to { opacity: 1; transform: scaleY(1) translateY(0); }
+    }
+    .toast-enter { animation: toastIn 0.3s ease; }
+    @keyframes toastIn {
+      from { opacity: 0; transform: translateY(12px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .vignette-snake { animation: vignetteRed 0.5s ease; }
+    @keyframes vignetteRed {
+      0% { box-shadow: inset 0 0 80px rgba(139,58,58,0.6); }
+      100% { box-shadow: none; }
+    }
+    .vignette-ladder { animation: vignetteGold 0.5s ease; }
+    @keyframes vignetteGold {
+      0% { box-shadow: inset 0 0 60px rgba(184,134,11,0.5); }
+      100% { box-shadow: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .die-face.rolling, .modal-enter, .toast-enter,
+      .vignette-snake, .vignette-ladder, .token, .karma-fill, .cell {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+    #board-svg { position: absolute; inset: 0; pointer-events: none; width: 100%; height: 100%; }
+    .board-wrap { position: relative; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0,0,0,0); border: 0;
+    }
+  </style>
+</head>
+<body class="font-body text-ink antialiased">
+  <div id="app" class="max-w-6xl mx-auto px-4 py-6">
+
+    <!-- Header -->
+    <header class="flex flex-wrap items-center justify-between gap-4 mb-6">
+      <div>
+        <h1 class="font-display text-2xl md:text-3xl font-bold tracking-wide">Mythic Path</h1>
+        <p class="text-sm opacity-70 italic">Snakes & Ladders of the Epics</p>
+      </div>
+      <div class="flex items-center gap-3 flex-wrap">
+        <span id="prestige-badge" class="hidden px-3 py-1 bg-gold/20 border border-gold rounded-full text-sm font-display"></span>
+        <button id="btn-settings" class="p-2 rounded border border-ink/20 hover:bg-ink/5" aria-label="Settings">⚙</button>
+      </div>
+    </header>
+
+    <!-- Resume prompt -->
+    <div id="resume-panel" class="hidden mb-6 p-4 scroll-texture bg-parchment border-2 border-ink/30 rounded-lg">
+      <p class="font-display mb-3">A journey awaits your return.</p>
+      <div class="flex gap-3 flex-wrap">
+        <button id="btn-resume" class="px-4 py-2 bg-forest text-parchment rounded font-display text-sm hover:opacity-90">Resume Yatra</button>
+        <button id="btn-new-journey" class="px-4 py-2 border-2 border-ink rounded font-display text-sm hover:bg-ink/5">New Journey</button>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-[1fr_280px] gap-6">
+      <!-- Board -->
+      <section class="board-wrap scroll-texture bg-parchment border-2 border-ink/40 rounded-lg p-3 md:p-4 shadow-lg" id="board-section">
+        <svg id="board-svg" aria-hidden="true"></svg>
+        <div id="board-grid" class="grid grid-cols-10 gap-0.5 md:gap-1 relative z-10" role="grid" aria-label="Game board"></div>
+      </section>
+
+      <!-- Sidebar -->
+      <aside class="space-y-4">
+        <!-- Board selector -->
+        <div class="scroll-texture bg-parchment border-2 border-ink/30 rounded-lg p-4">
+          <h2 class="font-display text-sm font-bold mb-2">Sacred Board</h2>
+          <div id="board-list" class="space-y-1"></div>
+        </div>
+
+        <!-- Karma -->
+        <div class="scroll-texture bg-parchment border-2 border-ink/30 rounded-lg p-4">
+          <h2 class="font-display text-sm font-bold mb-2">Karma</h2>
+          <div class="flex items-center gap-3">
+            <span class="text-xs writing-mode-vertical opacity-60" style="writing-mode: vertical-rl; transform: rotate(180deg);">Adharma</span>
+            <div class="relative w-8 h-32 bg-ink/10 rounded border border-ink/20 mx-auto">
+              <div id="karma-fill" class="karma-fill absolute bottom-0 left-0 right-0 bg-gradient-to-t from-vermillion via-saffron to-forest rounded-b" style="height:50%"></div>
+              <div class="absolute inset-0 flex flex-col justify-between py-1 pointer-events-none">
+                <div class="border-t border-ink/10"></div>
+                <div class="border-t border-ink/10"></div>
+                <div class="border-t border-ink/10"></div>
+                <div class="border-t border-ink/10"></div>
+              </div>
+            </div>
+            <span class="text-xs opacity-60">Dharma</span>
+          </div>
+          <p id="karma-value" class="text-center mt-2 font-display text-lg">50</p>
+        </div>
+
+        <!-- Dice -->
+        <div class="scroll-texture bg-parchment border-2 border-ink/30 rounded-lg p-4 text-center">
+          <div id="die" class="die-face mx-auto mb-3" aria-live="polite">—</div>
+          <button id="btn-roll" class="w-full px-4 py-3 bg-saffron text-parchment font-display font-bold rounded hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">
+            Roll Fate
+          </button>
+          <button id="btn-reroll" class="hidden w-full mt-2 px-3 py-2 border border-gold text-gold font-display text-sm rounded hover:bg-gold/10">
+            Divine Reroll
+          </button>
+          <div id="roll-log" class="mt-3 text-xs opacity-60 text-left space-y-0.5" aria-label="Recent rolls"></div>
+        </div>
+
+        <!-- Boons -->
+        <div class="scroll-texture bg-parchment border-2 border-ink/30 rounded-lg p-4">
+          <h2 class="font-display text-sm font-bold mb-2">Boons <span id="boon-count" class="opacity-60">(0)</span></h2>
+          <div id="boon-list" class="space-y-1 text-sm max-h-40 overflow-y-auto"></div>
+        </div>
+
+        <!-- Run stats -->
+        <div class="scroll-texture bg-parchment border-2 border-ink/30 rounded-lg p-4 text-sm">
+          <h2 class="font-display text-sm font-bold mb-2">This Yatra</h2>
+          <dl class="space-y-1 opacity-80">
+            <div class="flex justify-between"><dt>Turn</dt><dd id="stat-turn">0</dd></div>
+            <div class="flex justify-between"><dt>Position</dt><dd id="stat-pos">1</dd></div>
+            <div class="flex justify-between"><dt>Ladders</dt><dd id="stat-ladders">0</dd></div>
+            <div class="flex justify-between"><dt>Snakes</dt><dd id="stat-snakes">0</dd></div>
+          </dl>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 hidden px-4 py-2 bg-ink text-parchment rounded-lg text-sm shadow-lg z-50 toast-enter" role="status"></div>
+  </div>
+
+  <!-- Event Modal -->
+  <div id="modal-overlay" class="fixed inset-0 bg-ink/50 hidden z-40 flex items-center justify-center p-4" aria-hidden="true">
+    <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title"
+         class="scroll-texture bg-parchment border-2 border-ink max-w-md w-full rounded-lg p-6 shadow-2xl modal-enter">
+      <h2 id="modal-title" class="font-display text-xl font-bold mb-2"></h2>
+      <p id="modal-type-badge" class="text-xs uppercase tracking-wider text-saffron mb-3"></p>
+      <p id="modal-story" class="text-base leading-relaxed mb-4"></p>
+      <div id="modal-choices" class="space-y-2"></div>
+      <button id="modal-continue" class="hidden w-full mt-2 px-4 py-2 bg-forest text-parchment font-display rounded hover:opacity-90">Continue</button>
+    </div>
+  </div>
+
+  <!-- End Game Modal -->
+  <div id="end-overlay" class="fixed inset-0 bg-ink/60 hidden z-40 flex items-center justify-center p-4 overflow-y-auto">
+    <div class="scroll-texture bg-parchment border-2 border-ink max-w-lg w-full rounded-lg p-6 shadow-2xl my-4">
+      <h2 id="end-title" class="font-display text-2xl font-bold text-center mb-2"></h2>
+      <p id="end-epithet" class="text-center italic text-saffron mb-4"></p>
+      <div id="share-card" class="bg-parchment border border-ink/30 rounded p-4 mb-4 text-sm"></div>
+      <div class="flex flex-wrap gap-2 justify-center">
+        <button id="btn-copy-summary" class="px-4 py-2 bg-ink text-parchment rounded font-display text-sm">Copy Summary</button>
+        <button id="btn-copy-link" class="px-4 py-2 border border-ink rounded font-display text-sm">Copy Link</button>
+        <button id="btn-download-png" class="px-4 py-2 border border-ink rounded font-display text-sm">Download Card</button>
+        <button id="btn-prestige" class="hidden px-4 py-2 bg-gold text-parchment rounded font-display text-sm">Ascend (Prestige)</button>
+        <button id="btn-new-run" class="px-4 py-2 bg-saffron text-parchment rounded font-display text-sm">New Run</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Unlock Modal -->
+  <div id="unlock-overlay" class="fixed inset-0 bg-ink/50 hidden z-50 flex items-center justify-center p-4">
+    <div class="scroll-texture bg-parchment border-2 border-gold max-w-sm w-full rounded-lg p-6 text-center modal-enter">
+      <h2 class="font-display text-xl font-bold mb-2">Board Unveiled</h2>
+      <p id="unlock-text" class="mb-4"></p>
+      <button id="btn-unlock-close" class="px-4 py-2 bg-gold text-parchment rounded font-display text-sm">Continue</button>
+    </div>
+  </div>
+
+  <!-- Prestige Choice Modal -->
+  <div id="spark-overlay" class="fixed inset-0 bg-ink/50 hidden z-50 flex items-center justify-center p-4">
+    <div class="scroll-texture bg-parchment border-2 border-gold max-w-md w-full rounded-lg p-6">
+      <h2 class="font-display text-xl font-bold mb-2 text-center">Divine Spark</h2>
+      <p class="text-center text-sm mb-4 opacity-80">Choose a boon to empower for your next ascension.</p>
+      <div id="spark-choices" class="space-y-2"></div>
+    </div>
+  </div>
+
+  <!-- Settings panel -->
+  <div id="settings-overlay" class="fixed inset-0 bg-ink/50 hidden z-50 flex items-center justify-center p-4">
+    <div class="scroll-texture bg-parchment border-2 border-ink max-w-sm w-full rounded-lg p-6">
+      <h2 class="font-display text-lg font-bold mb-4">Settings</h2>
+      <p class="text-sm mb-2">Player ID: <code id="settings-id" class="text-xs"></code></p>
+      <p class="text-sm mb-4 opacity-70">Lifetime: <span id="settings-lifetime"></span></p>
+      <div class="flex gap-2 flex-wrap">
+        <button id="btn-export" class="px-3 py-1 border border-ink rounded text-sm">Export Save</button>
+        <button id="btn-import" class="px-3 py-1 border border-ink rounded text-sm">Import Save</button>
+        <button id="btn-settings-close" class="px-3 py-1 bg-ink text-parchment rounded text-sm">Close</button>
+      </div>
+      <input type="file" id="import-file" accept=".json" class="hidden" />
+    </div>
+  </div>
+
+<script>
+// --- CONFIG ---
+const CONFIG = {
+  SAVE_KEY: 'mythicSnakesProfile_v1',
+  REFERRAL_BASE: 'https://mythic-path.game/?ref=',
+  BOARD_SIZE: 100,
+  START_KARMA: 50,
+  KARMA_MIN: 0,
+  KARMA_MAX: 100,
+  HIGH_KARMA: 75,
+  LOW_KARMA: 25,
+  PRESTIGE_KARMA_BONUS: 0.05,
+  REROLL_KARMA_THRESHOLD: 60,
+};
+
+// --- BOON DEFINITIONS ---
+const BOON_DEFS = {
+  'Obstacle Breaker':    { desc: 'Once per run: skip one snake slide', type: 'once', effect: 'skipSnake' },
+  'Hanuman\'s Leap':       { desc: 'Once per run: +2 on your next roll', type: 'once', effect: 'rollBonus' },
+  'Sita\'s Resilience':    { desc: 'Passive: +3 karma from all events', type: 'passive', effect: 'karmaBonus' },
+  'Draupadi\'s Grace':     { desc: 'Once per run: reroll a failed trial', type: 'once', effect: 'trialReroll' },
+  'Krishna\'s Counsel':    { desc: 'Once per run: see next 3 rolls (simulated as +1 karma per turn)', type: 'once', effect: 'counsel' },
+  'Arjuna\'s Focus':       { desc: 'Passive: +1 to all trial checks', type: 'passive', effect: 'trialBonus' },
+  'Bhishma\'s Resolve':    { desc: 'Once per run: cannot go below position 10', type: 'once', effect: 'resolve' },
+  'Unity of the Five':     { desc: 'Passive: ladders grant +5 bonus karma', type: 'passive', effect: 'ladderKarma' },
+  'Durga\'s Shield':       { desc: 'Once per run: block one snake entirely', type: 'once', effect: 'blockSnake' },
+  'True Dharma':           { desc: 'Passive: +10% karma gain', type: 'passive', effect: 'karmaMult' },
+  'Ultimate Bhakti':       { desc: 'Once per run: jump +6 without rolling', type: 'once', effect: 'leap' },
+  'Cosmic Perspective':    { desc: 'Passive: reveal snakes within 5 cells ahead', type: 'passive', effect: 'reveal' },
+  'Moksha\'s Whisper':      { desc: 'Once per run: auto-advance to 100 from 95+', type: 'once', effect: 'moksha' },
+  'Eternal Guidance':      { desc: 'Passive: one free reroll per run', type: 'passive', effect: 'freeReroll' },
+  'Gāndīvā':               { desc: 'Passive: +1 to all rolls (NG+)', type: 'passive', effect: 'rollPlus', ngPlus: true },
+  'Third Eye':             { desc: 'Passive: snakes highlighted on board', type: 'passive', effect: 'reveal' },
+  'Sudāmā\'s Faith':       { desc: 'Passive: +5 karma at shrines', type: 'passive', effect: 'shrineKarma' },
+};
+
+// --- EVENTS (user-provided core board) ---
+const MYTHIC_EVENTS = [
+  { position: 4,  type: 'ladder', target: 14, title: 'Ganesha Removes the Obstacle', story: 'Lord Ganesha, remover of obstacles, clears your path with wisdom and grace.', karmaEffect: 12, boon: 'Obstacle Breaker', choices: null },
+  { position: 7,  type: 'event', title: 'The Birth of Rama', story: 'A divine child is born to uphold dharma. You feel the call to righteousness.', karmaEffect: 8, boon: null, choices: [{ text: 'Embrace the path of dharma', karma: 10 }, { text: 'Focus only on personal glory', karma: -4 }] },
+  { position: 9,  type: 'ladder', target: 21, title: 'Hanuman\'s First Leap of Devotion', story: 'Moved by pure bhakti, young Hanuman leaps toward the sun itself.', karmaEffect: 15, boon: 'Hanuman\'s Leap', choices: null },
+  { position: 12, type: 'snake', target: 5, title: 'Ravana\'s Growing Ego', story: 'The demon king\'s pride begins its long descent. A warning against arrogance.', karmaEffect: -10, boon: null, choices: [{ text: 'Learn humility from the fall', karma: 5 }, { text: 'Ignore the lesson', karma: -8 }] },
+  { position: 16, type: 'event', title: 'Sita\'s Quiet Strength', story: 'Even in the forest, Sita\'s unwavering dharma inspires those around her.', karmaEffect: 9, boon: 'Sita\'s Resilience', choices: null },
+  { position: 23, type: 'event', title: 'Draupadi\'s Humiliation & Divine Grace', story: 'In the moment of deepest despair, divine intervention restores dignity.', karmaEffect: 0, boon: null, choices: [{ text: 'Stand with dharma even in darkness', karma: 18, boon: 'Draupadi\'s Grace' }, { text: 'Seek only revenge', karma: -12 }] },
+  { position: 28, type: 'ladder', target: 42, title: 'Krishna\'s Flute & Divine Counsel', story: 'The sound of Krishna\'s flute calms the storm and shows the way forward.', karmaEffect: 14, boon: 'Krishna\'s Counsel', choices: null },
+  { position: 31, type: 'snake', target: 18, title: 'Karna\'s Divided Loyalty', story: 'A great warrior torn between dharma and friendship pays a heavy price.', karmaEffect: -7, boon: null, choices: [{ text: 'Honor both heart and duty', karma: 6 }, { text: 'Choose only loyalty', karma: -9 }] },
+  { position: 35, type: 'event', title: 'Arjuna\'s Moment of Doubt', story: 'On the battlefield of Kurukshetra, Arjuna questions the cost of war.', karmaEffect: 0, boon: null, choices: [{ text: 'Accept your svadharma with courage', karma: 15, boon: 'Arjuna\'s Focus' }, { text: 'Turn away from duty', karma: -10 }] },
+  { position: 38, type: 'ladder', target: 55, title: 'Bhishma\'s Unbreakable Vow', story: 'The grandsire\'s iron will and sacrifice becomes a ladder for future generations.', karmaEffect: 16, boon: 'Bhishma\'s Resolve', choices: null },
+  { position: 44, type: 'snake', target: 29, title: 'Duryodhana\'s Jealousy', story: 'The fire of envy consumes even the mightiest. A powerful reminder.', karmaEffect: -11, boon: null, choices: [{ text: 'Transform jealousy into self-improvement', karma: 7 }, { text: 'Let bitterness fester', karma: -6 }] },
+  { position: 49, type: 'event', title: 'The Pandavas\' Year in Exile', story: 'Twelve years of hardship forge unbreakable unity and wisdom.', karmaEffect: 10, boon: 'Unity of the Five', choices: null },
+  { position: 58, type: 'ladder', target: 76, title: 'Durga\'s Fierce Protection', story: 'The Divine Mother appears in her most powerful form to destroy adharma.', karmaEffect: 13, boon: 'Durga\'s Shield', choices: null },
+  { position: 63, type: 'event', title: 'Yudhishthira\'s Final Test', story: 'Even the most righteous king must face the illusion of a dog\'s loyalty.', karmaEffect: 0, boon: null, choices: [{ text: 'Choose compassion over heaven', karma: 20, boon: 'True Dharma' }, { text: 'Abandon the loyal for personal gain', karma: -15 }] },
+  { position: 67, type: 'snake', target: 51, title: 'The Curse of Ashwatthama', story: 'Uncontrolled anger and revenge bring eternal suffering. A grave warning.', karmaEffect: -13, boon: null, choices: [{ text: 'Seek forgiveness and learn peace', karma: 8 }, { text: 'Cling to rage', karma: -10 }] },
+  { position: 72, type: 'ladder', target: 89, title: 'Hanuman\'s Ultimate Devotion', story: 'Hanuman\'s heart holds Rama more firmly than any chain. Pure bhakti lifts all.', karmaEffect: 18, boon: 'Ultimate Bhakti', choices: null },
+  { position: 78, type: 'event', title: 'The Vision of Vishnu\'s Cosmic Form', story: 'Time, creation, and destruction revealed in one blinding moment of truth.', karmaEffect: 12, boon: 'Cosmic Perspective', choices: null },
+  { position: 84, type: 'snake', target: 66, title: 'The Illusion of Maya', story: 'Even the wisest can be caught in the web of illusion. A final test of discernment.', karmaEffect: -8, boon: null, choices: [{ text: 'See through the veil with steady wisdom', karma: 9 }, { text: 'Cling to the illusion', karma: -7 }] },
+  { position: 91, type: 'ladder', target: 98, title: 'The Final Surrender to the Divine', story: 'All effort, all karma, all identity offered at the feet of the Supreme.', karmaEffect: 22, boon: 'Moksha\'s Whisper', choices: null },
+  { position: 95, type: 'event', title: 'The Last Teaching of Krishna', story: 'Before departing, the Lord reminds: "Whenever dharma declines, I manifest."', karmaEffect: 15, boon: 'Eternal Guidance', choices: null },
+];
+
+// --- BOARD DEFINITIONS ---
+const BOARDS = [
+  {
+    id: 'mythic',
+    name: 'Mythic Path — Epics United',
+    subtitle: 'Ramayana & Mahabharata woven as one',
+    unlock: { type: 'default' },
+    events: MYTHIC_EVENTS,
+    extraSnakes: [],
+  },
+  {
+    id: 'ramayana',
+    name: 'Ramayana — Forest Exile',
+    subtitle: 'Ayodhya to Lanka',
+    unlock: { type: 'wins', value: 1 },
+    events: [
+      { position: 3,  type: 'ladder', target: 12, title: 'Bharata\'s Devotion', story: 'Bharata rules as a humble regent, refusing the throne until Rama returns.', karmaEffect: 10, boon: null, choices: null },
+      { position: 8,  type: 'event', title: 'Crossing the Ganges', story: 'Guha the boatman ferries the exiles across sacred waters.', karmaEffect: 6, boon: null, choices: [{ text: 'Offer gratitude to the ferryman', karma: 8 }, { text: 'Demand passage as royalty', karma: -5 }] },
+      { position: 14, type: 'snake', target: 6, title: 'Surpanakha\'s Rage', story: 'Wounded pride transforms into a curse upon the forest.', karmaEffect: -8, boon: null, choices: null },
+      { position: 19, type: 'ladder', target: 33, title: 'Jatayu\'s Sacrifice', story: 'The noble vulture king gives his life defending Sita.', karmaEffect: 14, boon: 'Hanuman\'s Leap', choices: null },
+      { position: 27, type: 'event', title: 'Shabari\'s Berries', story: 'An old devotee tastes each berry before offering the sweetest to Rama.', karmaEffect: 12, boon: 'Sudāmā\'s Faith', choices: null },
+      { position: 36, type: 'snake', target: 22, title: 'Maricha\'s Golden Deer', story: 'Illusion leads the righteous into peril.', karmaEffect: -9, boon: null, choices: [{ text: 'Recognize the trap', karma: 5 }, { text: 'Chase the illusion', karma: -6 }] },
+      { position: 41, type: 'ladder', target: 58, title: 'Hanuman Burns Lanka', story: 'With Rama\'s name on his lips, the wind itself becomes his ally.', karmaEffect: 16, boon: 'Durga\'s Shield', choices: null },
+      { position: 52, type: 'event', title: 'Vibhishana\'s Defection', story: 'The righteous brother of Ravana chooses dharma over blood.', karmaEffect: 8, boon: null, choices: [{ text: 'Welcome the repentant', karma: 12 }, { text: 'Distrust all Rakshasas', karma: -4 }] },
+      { position: 61, type: 'snake', target: 47, title: 'Indrajit\'s Sorcery', story: 'Dark illusions bind even the mightiest warriors.', karmaEffect: -10, boon: null, choices: null },
+      { position: 74, type: 'ladder', target: 88, title: 'The Bridge to Lanka', story: 'Stones float on the strength of Rama\'s name.', karmaEffect: 18, boon: 'Ultimate Bhakti', choices: null },
+      { position: 83, type: 'event', title: 'Agni Pariksha', story: 'Fire itself cannot burn one whose heart is pure.', karmaEffect: 10, boon: 'Sita\'s Resilience', choices: null },
+      { position: 96, type: 'ladder', target: 99, title: 'Return to Ayodhya', story: 'The kingdom welcomes its rightful king. Dharma is restored.', karmaEffect: 20, boon: 'Moksha\'s Whisper', choices: null },
+    ],
+    extraSnakes: [],
+  },
+  {
+    id: 'mahabharata',
+    name: 'Mahabharata — Kurukshetra',
+    subtitle: 'The great war of dharma',
+    unlock: { type: 'wins', value: 2 },
+    events: [
+      { position: 5,  type: 'ladder', target: 15, title: 'Ekalavya\'s Guru Dakshina', story: 'The tribal prince sacrifices his thumb — devotion beyond measure.', karmaEffect: 11, boon: null, choices: null },
+      { position: 11, type: 'event', title: 'Draupadi\'s Swayamvara', story: 'Only the one who can string the bow may win her hand.', karmaEffect: 5, boon: null, choices: [{ text: 'Compete with honor', karma: 10 }, { text: 'Scheme for advantage', karma: -6 }] },
+      { position: 17, type: 'snake', target: 8, title: 'The Dice Game', story: 'Loaded dice and hollow oaths strip a queen of her dignity.', karmaEffect: -12, boon: null, choices: [{ text: 'Remember the humiliation', karma: 8, boon: 'Draupadi\'s Grace' }, { text: 'Forget and move on', karma: -3 }] },
+      { position: 24, type: 'ladder', target: 39, title: 'Krishna\'s Peace Embassy', story: 'The Lord himself rides to prevent war — one last plea for peace.', karmaEffect: 13, boon: 'Krishna\'s Counsel', choices: null },
+      { position: 33, type: 'event', title: 'Arjuna\'s Gita', story: '"Do your duty without attachment to fruits," says the charioteer.', karmaEffect: 0, boon: null, choices: [{ text: 'Fight for dharma', karma: 18, boon: 'Arjuna\'s Focus' }, { text: 'Lay down your bow', karma: -8 }] },
+      { position: 40, type: 'snake', target: 26, title: 'Abhimanyu\'s Trap', story: 'The young hero enters a chakravyuha he cannot exit.', karmaEffect: -11, boon: null, choices: null },
+      { position: 46, type: 'ladder', target: 62, title: 'Bhima\'s Oath Fulfilled', story: 'The second Pandava breaks Duryodhana\'s thighs as sworn.', karmaEffect: 14, boon: 'Bhishma\'s Resolve', choices: null },
+      { position: 55, type: 'event', title: 'Karna\'s Revelation', story: 'The sun god\'s son learns his true lineage on the eve of death.', karmaEffect: 7, boon: null, choices: [{ text: 'Mourn the tragedy', karma: 10 }, { text: 'Celebrate victory', karma: -5 }] },
+      { position: 64, type: 'snake', target: 48, title: 'Guru Drona\'s Fall', story: 'A lie about his son\'s death ends the teacher\'s life.', karmaEffect: -9, boon: null, choices: [{ text: 'Grieve the cost of war', karma: 6 }, { text: 'Accept it as necessary', karma: -4 }] },
+      { position: 71, type: 'ladder', target: 85, title: 'Krishna\'s Vishwaroopa', story: 'The cosmic form reveals all of creation in a single glance.', karmaEffect: 17, boon: 'Cosmic Perspective', choices: null },
+      { position: 79, type: 'event', title: 'Yudhishthira\'s Dog', story: 'Heaven rejects the loyal hound. The king walks away from paradise.', karmaEffect: 0, boon: null, choices: [{ text: 'Choose loyalty over reward', karma: 22, boon: 'True Dharma' }, { text: 'Enter heaven alone', karma: -14 }] },
+      { position: 93, type: 'ladder', target: 99, title: 'Swargarohana', story: 'The final journey upward — moksha earned through trials.', karmaEffect: 20, boon: 'Eternal Guidance', choices: null },
+    ],
+    extraSnakes: [],
+  },
+  {
+    id: 'shiva',
+    name: 'Shiva Purana — Ascetic Fire',
+    subtitle: 'From halahala to tandava',
+    unlock: { type: 'prestige', value: 1 },
+    events: [
+      { position: 6,  type: 'event', title: 'The Churning of the Ocean', story: 'Devas and Asuras churn Mount Mandara for amrita. Poison rises first.', karmaEffect: 5, boon: null, choices: [{ text: 'Drink the poison for all', karma: 15, boon: 'Third Eye' }, { text: 'Let others suffer', karma: -10 }] },
+      { position: 13, type: 'ladder', target: 25, title: 'Neelakantha', story: 'Shiva holds the halahala in his throat. The cosmos is saved.', karmaEffect: 14, boon: 'Durga\'s Shield', choices: null },
+      { position: 22, type: 'snake', target: 11, title: 'Pride of Daksha', story: 'The father-in-law\'s insult ignites cosmic destruction.', karmaEffect: -10, boon: null, choices: null },
+      { position: 30, type: 'event', title: 'Parvati\'s Tapasya', story: 'The goddess meditates for millennia to win the ascetic\'s heart.', karmaEffect: 10, boon: 'Sita\'s Resilience', choices: null },
+      { position: 37, type: 'ladder', target: 51, title: 'Marriage of Shiva & Parvati', story: 'The ascetic and the goddess unite — creation and destruction in harmony.', karmaEffect: 15, boon: null, choices: null },
+      { position: 45, type: 'snake', target: 32, title: 'Curse of Bhrigu', story: 'A sage\'s wrath sends even gods tumbling.', karmaEffect: -8, boon: null, choices: [{ text: 'Accept the lesson', karma: 7 }, { text: 'Curse back', karma: -9 }] },
+      { position: 53, type: 'event', title: 'Ganga\'s Descent', story: 'The river threatens to shatter the earth. Shiva catches her in his locks.', karmaEffect: 12, boon: 'Obstacle Breaker', choices: null },
+      { position: 60, type: 'ladder', target: 73, title: 'The Tandava Begins', story: 'Shiva dances the universe into being and unbeing.', karmaEffect: 16, boon: 'Ultimate Bhakti', choices: null },
+      { position: 68, type: 'snake', target: 54, title: 'Andhaka\'s Lust', story: 'Blind desire leads to self-destruction.', karmaEffect: -11, boon: null, choices: null },
+      { position: 77, type: 'event', title: 'Lingodbhava', story: 'Brahma and Vishnu search for the pillar\'s end — neither succeeds.', karmaEffect: 8, boon: 'Cosmic Perspective', choices: null },
+      { position: 86, type: 'ladder', target: 97, title: 'Kailash Abode', story: 'The white mountain — home of the destroyer who saves.', karmaEffect: 20, boon: 'Moksha\'s Whisper', choices: null },
+      { position: 92, type: 'event', title: 'Om Namah Shivaya', story: 'The five-syllable mantra echoes across all worlds.', karmaEffect: 15, boon: 'Eternal Guidance', choices: null },
+    ],
+    extraSnakes: [],
+  },
+];
+
+// --- STATE ---
+let profile = null;
+let run = null;
+let busy = false;
+let modalResolve = null;
+let lastKarmaThreshold = 50;
+
+const $ = (sel) => document.querySelector(sel);
+const $$ = (sel) => document.querySelectorAll(sel);
+
+// Serpentine: cell 1 bottom-left, 100 top-left
+function posToRowCol(pos) {
+  const row = Math.ceil(pos / 10); // 1=bottom row
+  const colInRow = (pos - 1) % 10;
+  const col = row % 2 === 0 ? 9 - colInRow : colInRow;
+  return { row: 10 - row, col }; // grid row 0 = top
+}
+
+function getBoard() {
+  return BOARDS.find(b => b.id === run.boardId) || BOARDS[0];
+}
+
+function getEventMap(board) {
+  const map = {};
+  for (const e of board.events) map[e.position] = e;
+  // Prestige adds extra snakes
+  const prestige = profile.prestigeLevel || 0;
+  const extras = board.extraSnakes || [];
+  for (let i = 0; i < prestige && i < extras.length; i++) {
+    const s = extras[i];
+    if (!map[s.position]) map[s.position] = s;
+  }
+  return map;
+}
+
+function hasBoon(name) {
+  return profile.boons.some(b => b.id === name);
+}
+
+function hasBoonActive(name) {
+  return hasBoon(name) && !(run.boonUses[name] >= (BOON_DEFS[name]?.charges || 1));
+}
+
+function karmaMultiplier() {
+  let m = 1 + (profile.prestigeLevel || 0) * CONFIG.PRESTIGE_KARMA_BONUS;
+  if (hasBoon('True Dharma')) m += 0.1;
+  return m;
+}
+
+function passiveKarmaBonus() {
+  return hasBoon('Sita\'s Resilience') ? 3 : 0;
+}
+
+// --- PERSISTENCE ---
+function defaultProfile() {
+  return {
+    playerId: crypto.randomUUID().slice(0, 8),
+    prestigeLevel: 0,
+    totalWins: 0,
+    boardsUnlocked: ['mythic'],
+    boons: [],
+    lifetimeStats: { runs: 0, karma: 0, wins: 0 },
+    highKarmaStreak: 0,
+    activeRun: null,
+    boonUpgrades: [],
+  };
+}
+
+function loadProfile() {
+  try {
+    const raw = localStorage.getItem(CONFIG.SAVE_KEY);
+    profile = raw ? { ...defaultProfile(), ...JSON.parse(raw) } : defaultProfile();
+  } catch {
+    profile = defaultProfile();
+  }
+}
+
+function saveProfile() {
+  profile.activeRun = run;
+  localStorage.setItem(CONFIG.SAVE_KEY, JSON.stringify(profile));
+}
+
+function checkUnlocks() {
+  const newly = [];
+  for (const board of BOARDS) {
+    if (profile.boardsUnlocked.includes(board.id)) continue;
+    const u = board.unlock;
+    let ok = false;
+    if (u.type === 'default') ok = true;
+    else if (u.type === 'wins') ok = profile.totalWins >= u.value;
+    else if (u.type === 'prestige') ok = profile.prestigeLevel >= u.value;
+    if (ok) {
+      profile.boardsUnlocked.push(board.id);
+      newly.push(board);
+    }
+  }
+  return newly;
+}
+
+// --- RUN ---
+function createRun(boardId) {
+  return {
+    boardId,
+    position: 1,
+    karma: CONFIG.START_KARMA,
+    turn: 0,
+    stats: { ladders: 0, snakes: 0, boonsUsed: 0, eventsSeen: 0 },
+    boonUses: {},
+    rollLog: [],
+    flags: { snakeEscapeUsed: false, rerollAvailable: false, freeRerollUsed: false },
+    won: false,
+  };
+}
+
+function startRun(boardId, fresh = true) {
+  if (fresh) {
+    run = createRun(boardId);
+    profile.lifetimeStats.runs++;
+  }
+  busy = false;
+  lastKarmaThreshold = run.karma;
+  renderAll();
+  saveProfile();
+}
+
+// --- KARMA ---
+function applyKarma(delta) {
+  const adjusted = Math.round((delta + passiveKarmaBonus()) * karmaMultiplier());
+  const prev = run.karma;
+  run.karma = Math.max(CONFIG.KARMA_MIN, Math.min(CONFIG.KARMA_MAX, run.karma + adjusted));
+  profile.lifetimeStats.karma += adjusted;
+
+  if (prev < CONFIG.HIGH_KARMA && run.karma >= CONFIG.HIGH_KARMA && !run.flags.snakeEscapeUsed) {
+    run.flags.snakeEscapeUsed = false; // enables one escape
+    showToast('The cosmos notices your dharma — divine aid granted.');
+  }
+  for (const t of [40, 60, 80]) {
+    if (prev < t && run.karma >= t) showToast(`Karma threshold ${t} reached.`);
+  }
+  lastKarmaThreshold = run.karma;
+}
+
+function grantBoon(name) {
+  if (!name || hasBoon(name)) return;
+  profile.boons.push({ id: name, acquiredAt: Date.now() });
+  showToast(`Boon acquired: ${name}`);
+}
+
+// --- DICE ---
+function rollDie() {
+  let roll = Math.floor(Math.random() * 6) + 1;
+  if (hasBoon('Gāndīvā') && profile.prestigeLevel > 0) roll = Math.min(6, roll + 1);
+  return roll;
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+const reducedMotion = () => window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// --- MOVEMENT ---
+async function animateDie(value) {
+  const die = $('#die');
+  if (!reducedMotion()) {
+    die.classList.add('rolling');
+    for (let i = 0; i < 6; i++) {
+      die.textContent = Math.floor(Math.random() * 6) + 1;
+      await sleep(50);
+    }
+    die.classList.remove('rolling');
+  }
+  die.textContent = value;
+}
+
+async function moveSteps(steps) {
+  for (let i = 0; i < steps; i++) {
+    if (run.position >= CONFIG.BOARD_SIZE) break;
+    run.position++;
+    renderBoard();
+    if (!reducedMotion()) await sleep(80);
+  }
+}
+
+async function handleRoll(useReroll = false) {
+  if (busy || !run || run.won) return;
+  busy = true;
+  $('#btn-roll').disabled = true;
+
+  let roll = rollDie();
+  if (run.pendingRollBonus) {
+    roll = Math.min(6, roll + 2);
+    run.pendingRollBonus = false;
+    run.boonUses['Hanuman\'s Leap'] = 1;
+  }
+
+  await animateDie(roll);
+  run.rollLog.unshift(roll);
+  if (run.rollLog.length > 5) run.rollLog.pop();
+  run.turn++;
+
+  const target = Math.min(CONFIG.BOARD_SIZE, run.position + roll);
+  const steps = target - run.position;
+  await moveSteps(steps);
+
+  if (useReroll) run.flags.rerollAvailable = false;
+
+  await resolveSquare();
+  saveProfile();
+  renderSidebar();
+
+  busy = false;
+  $('#btn-roll').disabled = false;
+  updateRerollButton();
+}
+
+async function resolveSquare() {
+  const board = getBoard();
+  const eventMap = getEventMap(board);
+  const ev = eventMap[run.position];
+
+  if (ev) {
+    await showEventModal(ev);
+  }
+
+  if (run.position >= CONFIG.BOARD_SIZE) {
+    run.won = true;
+    onWin();
+    return;
+  }
+}
+
+async function applyEventEffects(ev, choice = null) {
+  let karma = ev.karmaEffect || 0;
+  let boon = ev.boon;
+  let moveTarget = null;
+
+  if (choice) {
+    karma += choice.karma || 0;
+    if (choice.boon) boon = choice.boon;
+  }
+
+  if (ev.type === 'ladder') {
+    moveTarget = ev.target;
+    run.stats.ladders++;
+    if (hasBoon('Unity of the Five')) karma += 5;
+    $('#board-section').classList.add('vignette-ladder');
+    setTimeout(() => $('#board-section').classList.remove('vignette-ladder'), 500);
+  } else if (ev.type === 'snake') {
+    // Check boon blocks
+    if (hasBoonActive('Durga\'s Shield') && !run.boonUses['Durga\'s Shield']) {
+      run.boonUses['Durga\'s Shield'] = 1;
+      run.stats.boonsUsed++;
+      showToast('Durga\'s Shield blocks the snake!');
+      applyKarma(karma);
+      if (boon) grantBoon(boon);
+      if (choice) applyKarma(choice.karma || 0);
+      return;
+    }
+    if (run.karma >= CONFIG.HIGH_KARMA && !run.flags.snakeEscapeUsed) {
+      run.flags.snakeEscapeUsed = true;
+      showToast('Divine aid — you escape the snake!');
+      applyKarma(karma);
+      if (boon) grantBoon(boon);
+      return;
+    }
+    if (hasBoonActive('Obstacle Breaker') && !run.boonUses['Obstacle Breaker']) {
+      run.boonUses['Obstacle Breaker'] = 1;
+      run.stats.boonsUsed++;
+      showToast('Obstacle Breaker — snake avoided!');
+      applyKarma(karma);
+      if (boon) grantBoon(boon);
+      return;
+    }
+    moveTarget = ev.target;
+    if (hasBoon('Bhishma\'s Resolve') && !run.boonUses['Bhishma\'s Resolve'] && moveTarget < 10) {
+      moveTarget = 10;
+      run.boonUses['Bhishma\'s Resolve'] = 1;
+    }
+    run.stats.snakes++;
+    $('#board-section').classList.add('vignette-snake');
+    setTimeout(() => $('#board-section').classList.remove('vignette-snake'), 500);
+  }
+
+  applyKarma(karma);
+  if (boon) grantBoon(boon);
+  run.stats.eventsSeen++;
+
+  if (moveTarget !== null) {
+    run.position = moveTarget;
+    renderBoard();
+  }
+
+  // Moksha's Whisper
+  if (hasBoonActive('Moksha\'s Whisper') && !run.boonUses['Moksha\'s Whisper'] && run.position >= 95) {
+    run.boonUses['Moksha\'s Whisper'] = 1;
+    run.position = CONFIG.BOARD_SIZE;
+    renderBoard();
+  }
+}
+
+// --- MODAL ---
+function showEventModal(ev) {
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+    const overlay = $('#modal-overlay');
+    $('#modal-title').textContent = ev.title;
+    $('#modal-type-badge').textContent = ev.type === 'ladder' ? '↑ Divine Ladder' : ev.type === 'snake' ? '↓ Serpent Trial' : '◈ Sacred Event';
+    $('#modal-story').textContent = ev.story;
+
+    const choicesEl = $('#modal-choices');
+    choicesEl.innerHTML = '';
+    $('#modal-continue').classList.add('hidden');
+
+    if (ev.choices && ev.choices.length) {
+      ev.choices.forEach((c, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'w-full text-left px-4 py-3 border-2 border-ink/30 rounded hover:bg-saffron/10 font-body';
+        btn.textContent = c.text;
+        btn.addEventListener('click', async () => {
+          closeModal();
+          await applyEventEffects(ev, c);
+          resolve();
+        });
+        choicesEl.appendChild(btn);
+      });
+    } else {
+      const btn = $('#modal-continue');
+      btn.classList.remove('hidden');
+      btn.onclick = async () => {
+        closeModal();
+        await applyEventEffects(ev);
+        resolve();
+      };
+    }
+
+    overlay.classList.remove('hidden');
+    overlay.setAttribute('aria-hidden', 'false');
+    trapFocus($('#modal'));
+  });
+}
+
+function closeModal() {
+  $('#modal-overlay').classList.add('hidden');
+  $('#modal-overlay').setAttribute('aria-hidden', 'true');
+  if (modalResolve) { modalResolve(); modalResolve = null; }
+}
+
+function trapFocus(el) {
+  const focusable = el.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
+  if (focusable.length) focusable[0].focus();
+}
+
+// --- WIN / END ---
+function getEpithet() {
+  if (run.karma >= 90) return 'Dhārmic Wanderer';
+  if (run.karma >= 70) return 'Seeker of Truth';
+  if (run.karma >= 50) return 'Balanced Soul';
+  if (run.karma >= 30) return 'Tempted Pilgrim';
+  return 'Ashvatthama\'s Shadow';
+}
+
+function buildShareText() {
+  const board = getBoard();
+  const ref = CONFIG.REFERRAL_BASE + profile.playerId;
+  const outcome = run.won ? 'Moksha attained' : `Fell at square ${run.position}`;
+  return [
+    `Mythic Path — ${board.name}`,
+    `${outcome} | ${getEpithet()}`,
+    `Turns: ${run.turn} | Karma: ${run.karma} | Ladders: ${run.stats.ladders} | Snakes: ${run.stats.snakes}`,
+    `Prestige: ${profile.prestigeLevel}`,
+    `Play your path → ${ref}`,
+  ].join('\n');
+}
+
+function renderShareCard() {
+  const board = getBoard();
+  const ref = CONFIG.REFERRAL_BASE + profile.playerId;
+  $('#share-card').innerHTML = `
+    <div id="share-card-inner" class="p-2" style="width:360px">
+      <h3 class="font-display text-lg font-bold border-b border-ink/20 pb-2 mb-2">Mythic Path</h3>
+      <p class="font-display text-sm text-saffron mb-1">${board.name}</p>
+      <p class="text-xl font-display font-bold mb-1">${run.won ? 'Moksha' : 'Journey Ended'}</p>
+      <p class="italic mb-3">${getEpithet()}</p>
+      <div class="grid grid-cols-2 gap-2 text-xs mb-3">
+        <span>Turns: <strong>${run.turn}</strong></span>
+        <span>Karma: <strong>${run.karma}</strong></span>
+        <span>Ladders: <strong>${run.stats.ladders}</strong></span>
+        <span>Snakes: <strong>${run.stats.snakes}</strong></span>
+        <span>Boons used: <strong>${run.stats.boonsUsed}</strong></span>
+        <span>Prestige: <strong>${profile.prestigeLevel}</strong></span>
+      </div>
+      <p class="text-xs border-t border-ink/20 pt-2 opacity-70">Play your path → ${ref}</p>
+    </div>`;
+}
+
+function onWin() {
+  profile.totalWins++;
+  profile.lifetimeStats.wins++;
+  if (run.karma >= 70) profile.highKarmaStreak++;
+  else profile.highKarmaStreak = 0;
+
+  const unlocked = checkUnlocks();
+  saveProfile();
+
+  $('#end-title').textContent = 'Moksha Attained';
+  $('#end-epithet').textContent = getEpithet();
+  renderShareCard();
+  $('#btn-prestige').classList.remove('hidden');
+  $('#end-overlay').classList.remove('hidden');
+
+  if (unlocked.length) showUnlockModal(unlocked[0]);
+}
+
+function showUnlockModal(board) {
+  $('#unlock-text').textContent = `${board.name} — ${board.subtitle}`;
+  $('#unlock-overlay').classList.remove('hidden');
+}
+
+// --- PRESTIGE ---
+function doPrestige() {
+  profile.prestigeLevel++;
+  run = null;
+  profile.activeRun = null;
+  saveProfile();
+
+  // Divine Spark — pick random boon upgrade
+  const owned = profile.boons.map(b => b.id);
+  const candidates = Object.keys(BOON_DEFS).filter(id => !owned.includes(id));
+  const picks = shuffle(candidates).slice(0, 3);
+  if (picks.length) showSparkModal(picks);
+  else {
+    $('#end-overlay').classList.add('hidden');
+    startRun(profile.boardsUnlocked[profile.boardsUnlocked.length - 1] || 'mythic');
+  }
+}
+
+function showSparkModal(picks) {
+  const el = $('#spark-choices');
+  el.innerHTML = '';
+  picks.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'w-full text-left px-4 py-3 border-2 border-gold/50 rounded hover:bg-gold/10';
+    btn.innerHTML = `<span class="font-display font-bold">${name}</span><br><span class="text-sm opacity-70">${BOON_DEFS[name]?.desc || ''}</span>`;
+    btn.addEventListener('click', () => {
+      grantBoon(name);
+      profile.boonUpgrades.push(name);
+      $('#spark-overlay').classList.add('hidden');
+      $('#end-overlay').classList.add('hidden');
+      startRun('mythic');
+      showToast(`Prestige ${profile.prestigeLevel} — ${name} empowered!`);
+    });
+    el.appendChild(btn);
+  });
+  $('#spark-overlay').classList.remove('hidden');
+}
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// --- RENDER ---
+function renderBoard() {
+  const board = getBoard();
+  const eventMap = getEventMap(board);
+  const grid = $('#board-grid');
+  grid.innerHTML = '';
+
+  // Build 10x10 cells top row = 91-100 area
+  const cells = Array.from({ length: 100 }, (_, i) => i + 1);
+  const gridOrder = [];
+  for (let r = 0; r < 10; r++) {
+    const rowNum = 10 - r;
+    const start = (rowNum - 1) * 10 + 1;
+    const rowCells = Array.from({ length: 10 }, (_, c) => {
+      return rowNum % 2 === 1 ? start + c : start + 9 - c;
+    });
+    gridOrder.push(...rowCells);
+  }
+
+  gridOrder.forEach(pos => {
+    const { row, col } = posToRowCol(pos);
+    const cell = document.createElement('div');
+    const ev = eventMap[pos];
+    let cls = 'cell aspect-square flex items-center justify-center text-[0.55rem] md:text-xs border border-ink/15 rounded-sm relative';
+    if (pos === run.position) cls += ' active';
+    if (ev?.type === 'ladder') cls += ' ladder-head';
+    if (ev?.type === 'snake') cls += ' snake-head';
+    cell.className = cls;
+    cell.style.gridRow = row + 1;
+    cell.style.gridColumn = col + 1;
+    cell.setAttribute('data-pos', pos);
+    cell.innerHTML = `<span class="opacity-50">${pos}</span>`;
+    if (pos === run.position) {
+      const token = document.createElement('div');
+      token.className = 'token absolute z-10';
+      token.setAttribute('aria-label', `Player at ${pos}`);
+      cell.appendChild(token);
+    }
+    if (pos === CONFIG.BOARD_SIZE) cell.innerHTML += '<span class="absolute bottom-0 text-[0.5rem] text-gold font-display">Moksha</span>';
+    grid.appendChild(cell);
+  });
+
+  drawSnakeLadderSVG(eventMap);
+}
+
+function cellCenter(pos) {
+  const cell = document.querySelector(`[data-pos="${pos}"]`);
+  const board = $('#board-grid');
+  if (!cell || !board) return { x: 0, y: 0 };
+  const br = board.getBoundingClientRect();
+  const cr = cell.getBoundingClientRect();
+  return { x: cr.left - br.left + cr.width / 2, y: cr.top - br.top + cr.height / 2 };
+}
+
+function drawSnakeLadderSVG(eventMap) {
+  const svg = $('#board-svg');
+  svg.innerHTML = '';
+  requestAnimationFrame(() => {
+    for (const ev of Object.values(eventMap)) {
+      if ((ev.type !== 'ladder' && ev.type !== 'snake') || !ev.target) continue;
+      const from = cellCenter(ev.position);
+      const to = cellCenter(ev.target);
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      const mx = (from.x + to.x) / 2 + (ev.type === 'snake' ? 20 : -20);
+      const my = (from.y + to.y) / 2;
+      const d = `M ${from.x} ${from.y} Q ${mx} ${my} ${to.x} ${to.y}`;
+      path.setAttribute('d', d);
+      path.setAttribute('fill', 'none');
+      path.setAttribute('stroke', ev.type === 'ladder' ? '#2D5A3D' : '#8B3A3A');
+      path.setAttribute('stroke-width', '3');
+      path.setAttribute('stroke-linecap', 'round');
+      path.setAttribute('opacity', '0.6');
+      svg.appendChild(path);
+    }
+  });
+}
+
+function renderSidebar() {
+  $('#karma-fill').style.height = run.karma + '%';
+  $('#karma-value').textContent = run.karma;
+  $('#stat-turn').textContent = run.turn;
+  $('#stat-pos').textContent = run.position;
+  $('#stat-ladders').textContent = run.stats.ladders;
+  $('#stat-snakes').textContent = run.stats.snakes;
+
+  const log = $('#roll-log');
+  log.innerHTML = run.rollLog.map(r => `<div>Roll: ${r}</div>`).join('');
+
+  renderBoons();
+  renderBoardList();
+  updateRerollButton();
+
+  if (profile.prestigeLevel > 0) {
+    $('#prestige-badge').classList.remove('hidden');
+    $('#prestige-badge').textContent = `Prestige ${profile.prestigeLevel}`;
+  }
+}
+
+function renderBoons() {
+  const el = $('#boon-list');
+  $('#boon-count').textContent = `(${profile.boons.length})`;
+  if (!profile.boons.length) {
+    el.innerHTML = '<p class="opacity-50 italic text-xs">No boons yet. Walk the path of dharma.</p>';
+    return;
+  }
+  el.innerHTML = profile.boons.map(b => {
+    const def = BOON_DEFS[b.id];
+    const used = run?.boonUses[b.id];
+    const status = def?.type === 'passive' ? '◉' : used ? '○' : '●';
+    return `<div class="flex gap-2 items-start"><span class="text-gold">${status}</span><div><span class="font-display text-xs">${b.id}</span><br><span class="text-xs opacity-60">${def?.desc || ''}</span></div></div>`;
+  }).join('');
+}
+
+function renderBoardList() {
+  const el = $('#board-list');
+  el.innerHTML = BOARDS.map(b => {
+    const unlocked = profile.boardsUnlocked.includes(b.id);
+    const active = run?.boardId === b.id;
+    const lockText = !unlocked ? ' 🔒' : '';
+    return `<button data-board="${b.id}" class="w-full text-left px-2 py-1.5 rounded text-sm ${active ? 'bg-saffron/20 border border-saffron' : 'hover:bg-ink/5'} ${!unlocked ? 'opacity-50' : ''}" ${!unlocked ? 'disabled' : ''}>
+      <span class="font-display text-xs">${b.name}${lockText}</span>
+    </button>`;
+  }).join('');
+
+  el.querySelectorAll('[data-board]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!profile.boardsUnlocked.includes(btn.dataset.board)) return;
+      if (run && !run.won && run.turn > 0) {
+        if (!confirm('Abandon current yatra and start on this board?')) return;
+      }
+      startRun(btn.dataset.board);
+    });
+  });
+}
+
+function updateRerollButton() {
+  const btn = $('#btn-reroll');
+  const canReroll = (run?.karma >= CONFIG.REROLL_KARMA_THRESHOLD && run?.flags.rerollAvailable) ||
+    (hasBoon('Eternal Guidance') && !run?.flags.freeRerollUsed);
+  btn.classList.toggle('hidden', !canReroll);
+}
+
+function renderAll() {
+  if (!run) return;
+  renderBoard();
+  renderSidebar();
+}
+
+function showToast(msg) {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.classList.remove('hidden');
+  setTimeout(() => t.classList.add('hidden'), 2800);
+}
+
+// --- INIT ---
+function bindEvents() {
+  $('#btn-roll').addEventListener('click', () => handleRoll(false));
+  $('#btn-reroll').addEventListener('click', () => handleRoll(true));
+  $('#btn-resume').addEventListener('click', () => {
+    $('#resume-panel').classList.add('hidden');
+    renderAll();
+  });
+  $('#btn-new-journey').addEventListener('click', () => {
+    $('#resume-panel').classList.add('hidden');
+    profile.activeRun = null;
+    startRun('mythic');
+  });
+  $('#btn-new-run').addEventListener('click', () => {
+    $('#end-overlay').classList.add('hidden');
+    startRun(run?.boardId || 'mythic');
+  });
+  $('#btn-prestige').addEventListener('click', doPrestige);
+  $('#btn-unlock-close').addEventListener('click', () => $('#unlock-overlay').classList.add('hidden'));
+  $('#btn-copy-summary').addEventListener('click', () => navigator.clipboard.writeText(buildShareText()).then(() => showToast('Summary copied!')));
+  $('#btn-copy-link').addEventListener('click', () => navigator.clipboard.writeText(CONFIG.REFERRAL_BASE + profile.playerId).then(() => showToast('Link copied!')));
+  $('#btn-download-png').addEventListener('click', async () => {
+    const el = document.getElementById('share-card-inner');
+    if (!el || typeof html2canvas === 'undefined') { showToast('PNG unavailable — copy text instead.'); return; }
+    const canvas = await html2canvas(el, { backgroundColor: '#F4E8D0', scale: 2 });
+    const a = document.createElement('a');
+    a.download = 'mythic-path-run.png';
+    a.href = canvas.toDataURL('image/png');
+    a.click();
+  });
+  $('#btn-settings').addEventListener('click', () => {
+    $('#settings-id').textContent = profile.playerId;
+    $('#settings-lifetime').textContent = `${profile.lifetimeStats.runs} runs, ${profile.lifetimeStats.wins} wins`;
+    $('#settings-overlay').classList.remove('hidden');
+  });
+  $('#btn-settings-close').addEventListener('click', () => $('#settings-overlay').classList.add('hidden'));
+  $('#btn-export').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(profile, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'mythic-path-save.json';
+    a.click();
+  });
+  $('#btn-import').addEventListener('click', () => $('#import-file').click());
+  $('#import-file').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        profile = { ...defaultProfile(), ...JSON.parse(reader.result) };
+        run = profile.activeRun;
+        saveProfile();
+        renderAll();
+        $('#settings-overlay').classList.add('hidden');
+        showToast('Save imported.');
+      } catch { showToast('Invalid save file.'); }
+    };
+    reader.readAsText(file);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      if (!$('#modal-overlay').classList.contains('hidden')) {
+        const ev = getEventMap(getBoard())[run.position];
+        if (ev && !ev.choices) closeModal();
+      }
+    }
+  });
+
+  window.addEventListener('resize', () => drawSnakeLadderSVG(getEventMap(getBoard())));
+}
+
+function boot() {
+  loadProfile();
+  bindEvents();
+
+  if (profile.activeRun && !profile.activeRun.won) {
+    run = profile.activeRun;
+    $('#resume-panel').classList.remove('hidden');
+    renderAll();
+  } else {
+    startRun('mythic');
+  }
+}
+
+boot();
+</script>
+<!--
+  Manual test checklist:
+  [ ] Fresh load → play → events fire on special squares
+  [ ] Resume mid-run after refresh
+  [ ] Karma meter updates on choices
+  [ ] Boons persist across runs
+  [ ] Board unlocks after wins
+  [ ] Prestige flow on Moksha
+  [ ] Share copy + PNG download
+  [ ] prefers-reduced-motion: no dice animation
+-->
+</body>
+</html>
